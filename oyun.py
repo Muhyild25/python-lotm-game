@@ -1,25 +1,13 @@
-from karakter import Karakter
+from karakter import Karakter, Seer, Sleepless, Assassin
 from dusman import Dusman
 from npc import NPC
 from esya import Esya, Silah, Tilsim
 from hikaye import HikayeYoneticisi
+from arayuz import deli_yazdir       # YENİ: Arayüz dosyasından geldi
+from savas import SavasYoneticisi    # YENİ: Savaş yöneticisinden geldi
 import veritabani
 import time
 import random
-
-def deli_yazdir(metin, sanity):
-    """Karakterin delilik seviyesine göre ekrana basılan metni bozar."""
-    if sanity >= 60:
-        print(metin)
-        return
-    fisiltilar = ["\n(Gölgeler hareket ediyor...)", "\n(Onlara güvenme...)", "\n(Gözlere bakma...)", "\n(Derinin altında bir şeyler sürünüyor...)"]
-    if 30 <= sanity < 60:
-        if random.randint(1, 4) == 1: print(random.choice(fisiltilar))
-        print(metin)
-    elif sanity < 30:
-        if random.randint(1, 3) == 1: print(random.choice(fisiltilar))
-        bozuk_metin = "".join(random.choice(["#", "?", "!", "%", "x", "_"]) if harf != " " and random.randint(1, 6) == 1 else harf for harf in metin)
-        print(bozuk_metin)
 
 # === OYUN BAŞLANGIÇ AYARLARI ===
 veritabani.veritabani_kur()
@@ -35,13 +23,28 @@ tum_esyalar = [baslangic_silahi] + dukkan_esyalari
 print("🌫️ Tingen şehrinin yağmurlu, isli ve karanlık sokaklarında gözlerini açtın...")
 print("📜 Lord of the Mysteries Evrenine Hoş Geldiniz...\n")
 
-oyuncu = Karakter(isim="Klein Moretti", pathway="Seer")
-oyuncu.esya_al(baslangic_silahi)
+eski_yol = veritabani.kayitli_yol_bul("Klein Moretti")
 
-# İŞTE ÇÖZÜLEN KISIM: Önce hikaye objesini yarat, sonra veri tabanına yolla!
+if eski_yol:
+    if eski_yol == "Seer": oyuncu = Seer(isim="Klein Moretti")
+    elif eski_yol == "Sleepless": oyuncu = Sleepless(isim="Klein Moretti")
+    elif eski_yol == "Assassin": oyuncu = Assassin(isim="Klein Moretti")
+else:
+    print("Hangi yolda (Pathway) yürümek istersin?")
+    print("1 - Seer (Kahin): Taktikseldir. %25 Kritik şansı. Yeteneği: Ruhsal Kırbaç")
+    print("2 - Sleepless (Uykusuz): Dayanıklıdır. 120 HP. Yeteneği: Karanlığın Kucağı")
+    print("3 - Assassin (Suikastçi): Ölümcüldür. %20 Iskalama. Yeteneği: Gölge İnfazı")
+    
+    while True:
+        yol_secimi = input("\nSeçiminiz (1/2/3): ")
+        if yol_secimi == '1': oyuncu = Seer(isim="Klein Moretti"); break
+        elif yol_secimi == '2': oyuncu = Sleepless(isim="Klein Moretti"); break
+        elif yol_secimi == '3': oyuncu = Assassin(isim="Klein Moretti"); break
+        else: print("❌ Lütfen geçerli bir yol seçin (1, 2 veya 3).")
+    oyuncu.esya_al(baslangic_silahi)
+
 hikaye = HikayeYoneticisi() 
 veritabani.kayit_yukle(oyuncu, tum_esyalar, hikaye)
-
 gizemli_haberci = NPC("Azik", "Tarot Elçisi", ["Bölüm sonundaki kiliseye gitmeden önce mutlaka akıl sağlığını fulle."])
 
 # === ANA OYUN DÖNGÜSÜ ===
@@ -67,8 +70,7 @@ while True:
     print("="*50)
     secim = input("Ne yapacaksın?: ")
     
-    if secim == '1':
-        oyuncu.durum_goster()
+    if secim == '1': oyuncu.durum_goster()
         
     elif secim == '2':
         print("\nKaranlık ve ıslak taşların üzerinde yürüyorsun...")
@@ -76,10 +78,8 @@ while True:
         kazanc = random.randint(1, 4)
         oyuncu.pound += kazanc
         deli_yazdir(f"Yerde {kazanc} Pound buldun.", oyuncu.sanity)
-        
         hikaye_metni = hikaye.sokak_arastirmasi_yap()
-        if hikaye_metni:
-            print(hikaye_metni)
+        if hikaye_metni: print(hikaye_metni)
                 
     elif secim == '3':
         print("\n🏥 Kliniğe girdin. 1- Terapist (5£, +20 Sanity) | 2- Cerrah (8£, +40 HP) | 0- Çıkış")
@@ -93,26 +93,16 @@ while True:
             
     elif secim == '4':
         yaratik = Dusman("Mutasyon Geçirmiş Avcı", hp=40, min_hasar=5, max_hasar=15)
-        deli_yazdir(f"\n🦇 Karanlıktan '{yaratik.isim}' fırladı!", oyuncu.sanity)
-        while yaratik.hp > 0 and oyuncu.hp > 0:
-            if input(f"[HP: {oyuncu.hp} | Canavar: {yaratik.hp}] 1- Saldır, 2- Kaç: ") == '1':
-                yaratik.hasar_al(oyuncu.saldir())
-                if yaratik.hp > 0: oyuncu.hasar_al(yaratik.saldir())
-            else: break
-        if oyuncu.hp <= 0:
-            print("\n💀 Öldün... Tingen sokakları seni de yuttu."); break
-        elif yaratik.hp <= 0:
-            kazanc = random.randint(10, 20)
-            oyuncu.pound += kazanc
-            print(f"\n🏆 Canavarı yendin! {kazanc} Pound kazandın.")
+        # Savaş yöneticisi sınıfını kullanıyoruz
+        sonuc = SavasYoneticisi.normal_savas(oyuncu, yaratik, deli_yazdir)
+        if sonuc == "oldu": break
             
     elif secim == '5':
         if any(e.isim == "Mutant Beyonder Gözü" for e in oyuncu.envanter):
             oyuncu.envanter = [e for e in oyuncu.envanter if e.isim != "Mutant Beyonder Gözü"]
             oyuncu.iksir_ic()
             if oyuncu.sanity <= 0: print("\n💀 Delirdin..."); break
-        else:
-            print("\n❌ Ritüel için 'Mutant Beyonder Gözü' lazım!")
+        else: print("\n❌ Ritüel için 'Mutant Beyonder Gözü' lazım!")
             
     elif secim == '6':
         print("\n=== KARABORSA DÜKKANI ===")
@@ -134,14 +124,11 @@ while True:
         
     elif secim == '8' and hikaye.adim == 2:
         boss = Dusman("Yozlaşmış Rahip Lane", hp=90, min_hasar=12, max_hasar=22)
-        print(f"\n⛪ Kilisenin kapısını kırarak içeri girdin! '{boss.isim}' sana saldırdı!")
-        while boss.hp > 0 and oyuncu.hp > 0:
-            if input(f"🚨 [SENİN HP: {oyuncu.hp} | BOSS HP: {boss.hp}] 1- Karşı Koy: ") == '1':
-                boss.hasar_al(oyuncu.saldir())
-                if boss.hp > 0: oyuncu.hasar_al(boss.saldir())
-        if oyuncu.hp <= 0:
-            print("\n💀 Boss zihnini paramparça etti."); break
-        elif boss.hp <= 0:
+        # Boss savaşını da yöneticiden çağırıyoruz
+        sonuc = SavasYoneticisi.boss_savasi(oyuncu, boss)
+        if sonuc == "oldu":
+            break
+        elif sonuc == "kazandi":
             hikaye.adim = 3
             print("\n🏆 Boss yere yığıldı. 1. BÖLÜMÜN SONU. Harika bir iş çıkardın!")
             veritabani.oyunu_kaydet(oyuncu, hikaye)
