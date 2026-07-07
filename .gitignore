@@ -1,2 +1,3 @@
 __pycache__/
 lotm_save.db
+.env
