@@ -1,8 +1,12 @@
 from varlik import Varlik
 import random
 
-# ANA KARAKTER KALIBI
 class Karakter(Varlik):
+    """
+    Oynanabilir karakterler için Temel Sınıf (Base Class).
+    Varlik sınıfından miras (Inheritance) alır; oyuncunun envanter, 
+    ekonomi ve gelişim durumlarını (State Management) yönetir.
+    """
     def __init__(self, isim, pathway):
         super().__init__(isim, hp=100) 
         self.pathway = pathway
@@ -12,6 +16,7 @@ class Karakter(Varlik):
         self.envanter = [] 
         
     def durum_goster(self):
+        """Karakterin anlık state'lerini View (Görünüm) katmanına yansıtır."""
         print(f"\n=== {self.isim} Karakter Ekranı ===")
         print(f"🔮 Yol (Pathway) : {self.pathway}")
         print(f"🔼 Dizi (Sequence): {self.sequence}")
@@ -27,6 +32,10 @@ class Karakter(Varlik):
         print("===================================\n")
 
     def _ekstra_hasar_hesapla(self):
+        """
+        [Protected Method] Karakterin envanterindeki nesnelerin hasar 
+        çarpanlarını (Modifiers) iteratif olarak toplayıp hesaplar.
+        """
         ekstra = 0
         for esya in self.envanter:
             if hasattr(esya, 'ekstra_hasar'):
@@ -38,33 +47,47 @@ class Karakter(Varlik):
         print(f"📦 '{yeni_esya.isim}' envantere eklendi.")
 
     def iksir_ic(self):
+        """
+        Karakter Gelişim Algoritması (Progression Mechanism).
+        Envanterdeki koruyucu eşyaların (Buff) özelliklerini dinamik olarak 
+        sorgulayıp (hasattr) Sanity cezasını (Penalty) hafifletir.
+        """
         print("\n🧪 Kazanda kaynayan mistik sıvıyı kafana diktin...")
         self.sequence -= 1 
+        
+        # Ceza Hafifletme (Penalty Mitigation) Algoritması
         delilik_hasari = 30
         for esya in self.envanter:
             if hasattr(esya, 'sanity_koruma'):
                 delilik_hasari -= esya.sanity_koruma
                 print(f"✨ Üzerindeki {esya.isim} parladı ve seni yozlaşmadan biraz korudu!")
+                
         self.sanity -= delilik_hasari  
         print(f"✨ Gözlerinin önünde yıldızlar patlıyor! Gizli varlıkların fısıltılarını duyuyorsun...")
         print(f"🔼 Tebrikler! Dizi (Sequence) {self.sequence} oldun!")
 
     def saldir(self):
+        """Varsayılan (Default) hasar hesaplama metodu."""
         return random.randint(10, 20) + self._ekstra_hasar_hesapla()
 
-    # Eğer alt sınıf özel yetenek tanımlamazsa diye boş bir kalıp bırakıyoruz
     def ozel_yetenek(self):
+        """
+        Sanal Metot (Virtual Method) şablonu.
+        Polymorphism gereği alt sınıflar (Child Classes) tarafından ezilmelidir (Override).
+        """
         return 0
 
 # ==========================================
-# PATHWAY (YOL) ALT SINIFLARI VE YETENEKLERİ
+# POLYMORPHIC ALT SINIFLAR (CHILD CLASSES)
 # ==========================================
 
 class Seer(Karakter):
+    """Kahin Sınıfı: Yüksek kritik şansı ve doğrudan zihinsel hasar dinamikleri barındırır."""
     def __init__(self, isim):
         super().__init__(isim, pathway="Seer")
         
     def saldir(self):
+        # Method Overriding: Seer sınıfına özel kritik vuruş (Critical Hit) algoritması.
         taban_hasar = random.randint(8, 15)
         if random.randint(1, 4) == 1:
             print("✨ Geleceği öngörerek düşmanın zayıf noktasına vurdun! (KRİTİK HASAR)")
@@ -72,6 +95,7 @@ class Seer(Karakter):
         return taban_hasar + self._ekstra_hasar_hesapla()
         
     def ozel_yetenek(self):
+        # Resource (Sanity) harcayarak yüksek burst hasar çıkarır.
         if self.sanity >= 15:
             self.sanity -= 15
             print("\n🔮 [YETENEK] 'Ruhsal Kırbaç': Düşmanın zihnine doğrudan saldırdın! (-15 Sanity)")
@@ -81,30 +105,34 @@ class Seer(Karakter):
             return 0
 
 class Sleepless(Karakter):
+    """Uykusuz Sınıfı: Yüksek base HP ve kendini iyileştirme (Self-Heal) mekanikleri barındırır."""
     def __init__(self, isim):
         super().__init__(isim, pathway="Sleepless")
-        self.hp = 120 
+        self.hp = 120 # Stat Scaling (Temel dayanıklılık artışı)
         
     def saldir(self):
         print("⚔️ Gecenin karanlığından güç alarak ağır bir darbe indirdin!")
         return random.randint(12, 18) + self._ekstra_hasar_hesapla()
         
     def ozel_yetenek(self):
+        # Hasar yerine karakterin HP state'ini yenileyen defansif yetenek.
         if self.sanity >= 10:
             self.sanity -= 10
             iyilesme = 35
             self.hp = min(120, self.hp + iyilesme)
             print(f"\n🌙 [YETENEK] 'Karanlığın Kucağı': Gölgeler kanayan yaralarını sardı! (+{iyilesme} HP, -10 Sanity)")
-            return 0 # Hasar vurmuyor, kendini iyileştiriyor
+            return 0 
         else:
             print("\n❌ Zihnin bu büyüyü kaldıramaz! Yeterli Akıl Sağlığın yok.")
             return 0
 
 class Assassin(Karakter):
+    """Suikastçi Sınıfı: Yüksek risk (ıskalama şansı) ve aşırı yüksek anlık hasar (Burst) dinamikleri barındırır."""
     def __init__(self, isim):
         super().__init__(isim, pathway="Assassin")
         
     def saldir(self):
+        # RNG tabanlı miss (ıskalama) mekaniği entegrasyonu.
         if random.randint(1, 5) == 1:
             print("💨 Hızlı davranmaya çalışırken gölgelerde takıldın ve ıskaladın!")
             return 0
@@ -113,6 +141,7 @@ class Assassin(Karakter):
             return random.randint(15, 25) + self._ekstra_hasar_hesapla()
             
     def ozel_yetenek(self):
+        # Yüksek riskli (20 Sanity), yüksek ödüllü ultimate yetenek.
         if self.sanity >= 20:
             self.sanity -= 20
             print("\n🗡️ [YETENEK] 'Gölge İnfazı': Tamamen görünmez olup düşmanın kalbine saldırdın! (-20 Sanity)")
