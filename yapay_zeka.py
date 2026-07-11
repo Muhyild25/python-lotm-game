@@ -4,12 +4,13 @@ import time
 from dotenv import load_dotenv
 from google import genai
 
-# .env dosyasındaki şifreyi yüklüyoruz
+# Çevresel değişkenleri yükler ve entegrasyon için gerekli API kimlik doğrulamasını yapılandırır.
 load_dotenv()
 api_key = os.environ.get("GEMINI_API_KEY")
 
-# --- YEDEK FISILTILAR KÜTÜPHANESİ ---
-# API çökerse, kotan dolarsa veya cooldown süresindeysek bunlar devreye girecek.
+# --- YEREL FALLBACK VERİ HAVUZU ---
+# Uzak sunucu servisinin erişilemez olduğu, kota sınırlarının aşıldığı (HTTP 429) 
+# veya hız sınırlama (cooldown) mekanizmasının aktif olduğu durumlarda kullanılacak alternatif metin seti.
 YEDEK_FISILTILAR = [
     "Karanlıkta binlerce gözün seni izlediğini hissediyorsun...",
     "Antigonus... Sakın o ismi anma...",
@@ -19,41 +20,53 @@ YEDEK_FISILTILAR = [
     "Zihnin parçalanıyor, gölgeler uzayıp boynuna dolanıyor sanki."
 ]
 
-# API'yi boğmamak için zaman damgası tutuyoruz
+# Hız sınırlama algoritması için son başarılı uzak bağlantı zaman damgasını (timestamp) saklar.
 son_istek_zamani = 0
 
 class YZMotoru:
     @staticmethod
     def fisilti_uret(sanity):
+        """
+        Karakterin mevcut akıl sağlığı parametresine göre dinamik metin üretir.
+        Rate Limiting ve Throttling filtrelerini uygulayarak ağ trafiğini ve GUI kararlılığını optimize eder.
+        """
         global son_istek_zamani
         su_an = time.time()
         
-        # 1. KONTROL: Cooldown (Son API çağrısından bu yana en az 10 saniye geçmeli)
+        # KONTROL 1: Rate Limiting (Soğuma Süresi)
+        # API kaynaklarının aşırı tüketimini önlemek adına ardışık iki istek arasında 
+        # minimum 10 saniyelik güvenli bir eşik kontrolü gerçekleştirilir.
         if su_an - son_istek_zamani < 10:
             return f"🧠 {random.choice(YEDEK_FISILTILAR)}"
             
-        # 2. KONTROL: Olasılık Filtresi (Sadece %30 ihtimalle gerçek API'yi yor)
-        # Sürekli API'ye gitmek hem kotayı doldurur hem de PyQt arayüzünü dondurur.
+        # KONTROL 2: Throttling (İstek Seyreltme Filtresi)
+        # Her arama tetiklenmesinde uzak sunucuya gitmek yerine %30 olasılıklı bir filtre uygular.
+        # Bu işlem, ana GUI thread'inin asenkron beklemelerle donmasını engeller.
         if random.randint(1, 100) > 30:
             return f"🧠 {random.choice(YEDEK_FISILTILAR)}"
 
-        # Eğer kalkanları geçtiksek, Google sunucularına bağlanıyoruz
+        # API kimlik doğrulama anahtarının varlık kontrolü.
         if not api_key:
             return f"🧠 {random.choice(YEDEK_FISILTILAR)}"
 
         try:
             client = genai.Client(api_key=api_key)
-            prompt = f"Lord of the Mysteries evreninde Tingen şehrindeyiz. Karakterin akıl sağlığı {sanity}. Bana onun duyacağı çok kısa, karanlık, tek cümlelik bir fısıltı yaz."
+            prompt = (
+                f"Lord of the Mysteries evreninde Tingen şehrindeyiz. "
+                f"Karakterin akıl sağlığı {sanity}. Bana onun duyacağı çok kısa, "
+                f"karanlık, tek cümlelik bir fısıltı yaz."
+            )
             
             response = client.models.generate_content(
                 model='gemini-2.0-flash', 
                 contents=prompt
             )
             
-            # Başarılı olursa zamanlayıcıyı sıfırla
+            # Başarılı istek sonrası zaman damgası güncellenir.
             son_istek_zamani = su_an 
             return f"🌀 [YZ] {response.text.strip()}"
             
         except Exception:
-            # API 429 Hatası verirse veya çökerse sessizce yedeği döndür
+            # Hata Yönetimi: Bağlantı kopmaları veya RESOURCE_EXHAUSTED durumlarında 
+            # sistemin kesintisiz çalışması için yerel kütüphaneye geri dönülür (Fallback).
             return f"🧠 {random.choice(YEDEK_FISILTILAR)}"

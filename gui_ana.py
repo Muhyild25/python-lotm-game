@@ -9,7 +9,7 @@ try:
     YZ_AKTIF = True
 except ImportError:
     YZ_AKTIF = False
-    print("Uyarı: yapay_zeka.py bulunamadı, YZ fısıltıları kapalı.")
+    print("[SYS_WARN] yapay_zeka.py modülü bulunamadı, AI Fallback sistemi devrede.")
 
 from savas_arayuzu import SavasPenceresi
 
@@ -20,6 +20,10 @@ from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QSoundEffect
 
 def veritabani_hazirla():
+    """
+    Yerel SQLite veritabanı (Local Storage) başlatma fonksiyonu.
+    Uygulama yaşam döngüsü öncesi şema doğrulamasını (Schema Validation) gerçekleştirir.
+    """
     conn = sqlite3.connect('lotm_save.db')
     cursor = conn.cursor()
     cursor.execute('''CREATE TABLE IF NOT EXISTS kayitlar (
@@ -35,6 +39,11 @@ def veritabani_hazirla():
 
 
 class BossSavasPenceresi(QDialog):
+    """
+    Final Boss karşılaşmasını yöneten Modal Dialog sınıfı.
+    Normal savaşlardan (SavasPenceresi) farklı olarak kaçış mekanizması (Flee) devre dışı bırakılmış 
+    ve hikaye eşyalarına (Quest Items) bağlı dinamik zorluk ölçeklendirmesi (Difficulty Scaling) eklenmiştir.
+    """
     def __init__(self, oyuncu, ebeveyn):
         super().__init__(ebeveyn)
         self.pencere = ebeveyn.pencere
@@ -44,7 +53,7 @@ class BossSavasPenceresi(QDialog):
         self.oyuncu = oyuncu
         self.sonuc = None
 
-        # --- GÜNEŞ TILSIMI KONTROLÜ (HİKAYE BAĞLANTISI) ---
+        # State Dependency: Boss stat'ları envanterdeki spesifik quest-item varlığına göre manipüle edilir.
         self.tilsim_var_mi = "Güneş Tılsımı" in self.oyuncu.envanter
         
         if self.tilsim_var_mi:
@@ -52,13 +61,14 @@ class BossSavasPenceresi(QDialog):
             self.boss_hasar_min = 15
             self.boss_hasar_max = 30
         else:
-            # Tılsım yoksa Megose pratik olarak ölümsüz ve tek atıyor
+            # Hard-Enrage State: Gerekli eşya yoksa hayatta kalma ihtimali sıfırlanır.
             self.boss_hp = 999
             self.boss_hasar_min = 80
             self.boss_hasar_max = 150
 
         self.duzen = QVBoxLayout(self)
         
+        # UI Layout: Boss HP & Karakter Durumu
         self.lbl_baslik = QLabel("⚠️ MEGOSE (Gerçek Yaratıcı'nın Tohumu) ⚠️")
         self.lbl_baslik.setStyleSheet("font-size: 20px; color: #ff0000; font-weight: bold;")
         self.lbl_baslik.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -69,6 +79,7 @@ class BossSavasPenceresi(QDialog):
         self.lbl_durum.setStyleSheet("font-size: 16px; color: #ffffff;")
         self.duzen.addWidget(self.lbl_durum)
 
+        # Combat Log Görüntüleyici
         self.txt_log = QTextEdit()
         self.txt_log.setReadOnly(True)
         self.txt_log.setStyleSheet("background-color: #0d0000; border: 1px solid #ff0000; font-size: 14px;")
@@ -77,13 +88,13 @@ class BossSavasPenceresi(QDialog):
         
         if self.tilsim_var_mi:
             self.txt_log.append("\n☀️ Çantandaki 'Güneş Tılsımı' alev alev parlıyor! Kutsal güç Megose'nin yozlaşmış aurasını zayıflattı.")
-            # Kullanılan tılsımı envanterden siliyoruz
-            self.oyuncu.envanter.remove("Güneş Tılsımı")
+            self.oyuncu.envanter.remove("Güneş Tılsımı") # Tüketilebilir eşya silinir (Item Consumption)
         else:
             self.txt_log.append("\n❌ DİKKAT: Üzerinde 'Güneş Tılsımı' yok! Megose'nin yaydığı ilkel yozlaşma (Corruption) aurası zihnini eziyor. Onu bu halde yenmen imkansız...")
 
         self.duzen.addWidget(self.txt_log)
 
+        # Action Buttons
         self.btn_saldir = QPushButton("⚔️ Normal Saldırı")
         self.btn_saldir.setStyleSheet("background-color: #330000; border: 1px solid #ff4444; padding: 10px;")
         self.btn_saldir.clicked.connect(self.normal_saldiri)
@@ -95,6 +106,7 @@ class BossSavasPenceresi(QDialog):
         self.duzen.addWidget(self.btn_ozel)
 
     def dusman_saldirisi(self):
+        """Counter-Attack mantığı: Oyuncu hamlesinden hemen sonra asenkron olmayan (senkron) yanıt."""
         if self.boss_hp <= 0:
             return
         hasar = random.randint(self.boss_hasar_min, self.boss_hasar_max)
@@ -106,13 +118,14 @@ class BossSavasPenceresi(QDialog):
         if self.oyuncu.hp <= 0:
             self.sonuc = "maglubiyet"
             self.txt_log.append("\n💀 Bedenin parçalandı... Tingen karanlığa gömüldü.")
-            QApplication.processEvents()
+            QApplication.processEvents() # UI donmalarını (freeze) engeller
             self.accept()
 
     def normal_saldiri(self):
+        """Action Phase 1: Kaynak tüketmeyen standart saldırı algoritması."""
         hasar = self.oyuncu.saldir()
         if not self.tilsim_var_mi:
-            hasar = 1 # Tılsım yoksa hasar veremezsin
+            hasar = 1 
             
         self.boss_hp -= hasar
         self.txt_log.append(f"\n> ⚔️ Megose'ye {hasar} hasar verdin!")
@@ -126,11 +139,12 @@ class BossSavasPenceresi(QDialog):
             self.dusman_saldirisi()
 
     def ozel_yetenek(self):
+        """Action Phase 2: Polymorphic özel yetenek tetikleyicisi."""
         eski_hp = self.oyuncu.hp
         ozel_hasar = self.oyuncu.ozel_yetenek()
         
         if not self.tilsim_var_mi:
-            ozel_hasar = 1 # Tılsım yoksa özel yetenek de işlemez
+            ozel_hasar = 1 
             
         if ozel_hasar > 0:
             self.boss_hp -= ozel_hasar
@@ -150,11 +164,16 @@ class BossSavasPenceresi(QDialog):
             self.dusman_saldirisi()
 
     def durum_guncelle(self):
+        """UI Refresh Metodu."""
         self.lbl_durum.setText(f"Megose HP: {self.boss_hp}\nSenin HP: {self.oyuncu.hp} | Akıl Sağlığın: {self.oyuncu.sanity}")
         self.txt_log.verticalScrollBar().setValue(self.txt_log.verticalScrollBar().maximum())
 
 
 class AnaMenüEkranı(QWidget):
+    """
+    Uygulamanın Entry Point (Giriş Noktası) Görünümü (View).
+    Yeni oyun yaratma (Initialization) veya mevcut kaydı çözümleme (Deserialization) işlemlerini Controller'a aktarır.
+    """
     def __init__(self, pencere_referansi):
         super().__init__()
         self.pencere = pencere_referansi
@@ -195,6 +214,7 @@ class AnaMenüEkranı(QWidget):
         duzen.addLayout(btn_duzen)
 
     def yeni_oyun_baslat(self):
+        """Karakter modelini varsayılan state (Sıradan İnsan) ile başlatır."""
         isim = self.txt_isim.text().strip()
         if not isim:
             QMessageBox.warning(self, "Hata", "Lütfen bir isim girin!")
@@ -205,9 +225,10 @@ class AnaMenüEkranı(QWidget):
         self.pencere.oyuncu.sequence = 10 
         
         self.pencere.oyun_ekrani_widget.oyun_baslangic_ayari(yeni_mi=True)
-        self.pencere.ekran_degistirici.setCurrentIndex(1)
+        self.pencere.ekran_degistirici.setCurrentIndex(1) # Routing to Gameplay Screen
 
     def oyunu_yukle(self):
+        """Veritabanından Payload okuyup Polymorphic Karakter Sınıflarını (Seer, Assassin, vb.) ayağa kaldırır."""
         isim = self.txt_isim.text().strip()
         if not isim:
             QMessageBox.warning(self, "Hata", "Yüklenecek karakterin adını girmelisin!")
@@ -217,9 +238,11 @@ class AnaMenüEkranı(QWidget):
         cursor.execute("SELECT * FROM kayitlar WHERE isim=?", (isim,))
         kayit = cursor.fetchone()
         conn.close()
+        
         if kayit:
             k_isim, k_pathway, k_hp, k_sanity, k_pound, k_sequence, k_envanter = kayit
             
+            # Dinamik Instance Yaratımı (Factory Pattern benzeri yapı)
             if k_pathway == "Sleepless": self.pencere.oyuncu = Sleepless(k_isim)
             elif k_pathway == "Seer": self.pencere.oyuncu = Seer(k_isim)
             elif k_pathway == "Assassin": self.pencere.oyuncu = Assassin(k_isim)
@@ -239,11 +262,16 @@ class AnaMenüEkranı(QWidget):
 
 
 class OyunEkranı(QWidget):
+    """
+    Core Gameplay View Katmanı.
+    Tüm aksiyon menülerini (Navigation), oyun loglarını ve karakter durumlarını render eder.
+    """
     def __init__(self, pencere_referansi):
         super().__init__()
         self.pencere = pencere_referansi
         self.ana_duzen = QVBoxLayout(self)
 
+        # Header: Vitals (HP, Sanity, Currency)
         self.stat_duzen = QHBoxLayout()
         self.lbl_can = QLabel("❤️ Can: -")
         self.lbl_sanity = QLabel("🧠 Akıl Sağlığı: -")
@@ -253,6 +281,7 @@ class OyunEkranı(QWidget):
         self.stat_duzen.addWidget(self.lbl_para)
         self.ana_duzen.addLayout(self.stat_duzen)
 
+        # Body: Narrative Log & Inventory Side Panel
         self.orta_duzen = QHBoxLayout()
         self.text_ekrani = QTextEdit()
         self.text_ekrani.setReadOnly(True)
@@ -284,6 +313,7 @@ class OyunEkranı(QWidget):
         self.orta_duzen.addWidget(self.yan_panel, stretch=1)
         self.ana_duzen.addLayout(self.orta_duzen)
 
+        # Footer: Action Buttons (Routing Controllers)
         self.buton_duzen = QHBoxLayout()
         self.btn_arastir = QPushButton("Sokakları Araştır")
         self.btn_dinlen = QPushButton("Kliniğe Gir (10£)")
@@ -300,6 +330,7 @@ class OyunEkranı(QWidget):
         self.buton_duzen.addWidget(self.btn_kaydet)
         self.ana_duzen.addLayout(self.buton_duzen)
 
+        # Event Bindings
         self.btn_arastir.clicked.connect(self.arastir_tiklandi)
         self.btn_dinlen.clicked.connect(self.klinik_tiklandi)
         self.btn_karaborsa.clicked.connect(self.karaborsa_tiklandi)
@@ -315,6 +346,7 @@ class OyunEkranı(QWidget):
         self.arayuzu_guncelle()
 
     def arayuzu_guncelle(self):
+        """Tüm Data ve State değişikliklerini Görünüm (View) katmanına basar."""
         self.lbl_can.setText(f"❤️ Can: {self.pencere.oyuncu.hp}")
         self.lbl_sanity.setText(f"🧠 Akıl Sağlığı: {self.pencere.oyuncu.sanity}")
         self.lbl_para.setText(f"💷 Para: {self.pencere.oyuncu.pound} Pound")
@@ -335,6 +367,7 @@ class OyunEkranı(QWidget):
         self.olum_kontrol()
 
     def olum_kontrol(self):
+        """Game Over Listener."""
         if self.pencere.oyuncu.hp <= 0:
             QMessageBox.critical(self, "ÖLDÜN", "Aldığın yaralara dayanamadın. Kanın Tingen sokaklarına karıştı...")
             self.pencere.close()
@@ -343,6 +376,7 @@ class OyunEkranı(QWidget):
             self.pencere.close()
 
     def arastir_tiklandi(self):
+        """Exploration State Logic - RNG tabanlı hikaye ve çatışma jeneratörü."""
         if "Antigonus Not Defteri" not in self.pencere.oyuncu.envanter and "Azik'in Bakır Düdüğü" not in self.pencere.oyuncu.envanter and random.randint(1, 10) > 8:
             self.text_ekrani.append("\n> 📜 Yıkık dökük bir evin zemininde deri kaplı, tekinsiz bir not defteri buldun! Üzerinde Antigonus ailesinin arması var.")
             self.pencere.sfx_cal("esya.wav")
@@ -395,6 +429,7 @@ class OyunEkranı(QWidget):
         elif olay == "delilik":
             self.pencere.oyuncu.sanity -= random.randint(10, 20)
             self.text_ekrani.append("\n> Karanlıkta fısıltılar duydun... Zihnin bulanıyor!")
+            # AI API Injection: Düşük Sanity durumunda LLM bazlı fısıltı üretimi.
             if self.pencere.oyuncu.sanity < 60 and self.pencere.oyuncu.sanity > 0 and YZ_AKTIF:
                 self.text_ekrani.append("⏳ Zihninin derinliklerinden bir ses yükseliyor...")
                 QApplication.processEvents() 
@@ -405,16 +440,17 @@ class OyunEkranı(QWidget):
         self.arayuzu_guncelle()
 
     def azik_tiklandi(self):
+        """NPC Interaction & Boss Phase Trigger Controller."""
         self.text_ekrani.append("\n> 🎓 Khoy Üniversitesi'nin sakin koridorlarında Tarih Hocası Bay Azik'in odasına girdin.")
         
-        # OYUN SONU FİNAL SAVAŞI: 50 Pound, Düdük var ve oyuncu Beyonder ise
+        # Condition Check for Final Encounter
         if "Azik'in Bakır Düdüğü" in self.pencere.oyuncu.envanter and self.pencere.oyuncu.pound >= 50 and self.pencere.oyuncu.sequence == 9:
             self.text_ekrani.append("> Bay Azik masaya koyduğun 50 Pound'a ve düdüğe baktı. Yüzü aniden ciddileşti.")
             self.text_ekrani.append("> 'Tingen'den ayrılmadan önce yüzleşmemiz gereken son bir karanlık var...'")
             self.arayuzu_guncelle()
             QApplication.processEvents()
             
-            # --- BOSS SAVAŞI BAŞLIYOR ---
+            # --- BOSS ENCOUNTER BAŞLATILMASI ---
             self.pencere.sfx_cal("boss.wav")
             boss_ekrani = BossSavasPenceresi(self.pencere.oyuncu, self)
             boss_ekrani.exec()
@@ -438,7 +474,7 @@ class OyunEkranı(QWidget):
                 )
                 self.pencere.close()
             else:
-                self.olum_kontrol() # Megose karakteri öldürdüyse oyunu bitir
+                self.olum_kontrol() 
             return
             
         elif "Azik'in Bakır Düdüğü" in self.pencere.oyuncu.envanter:
@@ -462,6 +498,7 @@ class OyunEkranı(QWidget):
         self.arayuzu_guncelle()
 
     def klinik_tiklandi(self):
+        """Recovery Controller (Health/Sanity Restoration)."""
         if self.pencere.oyuncu.pound >= 10:
             self.pencere.oyuncu.pound -= 10
             maks_hp = 120 if isinstance(self.pencere.oyuncu, Sleepless) else 100
@@ -473,6 +510,7 @@ class OyunEkranı(QWidget):
         self.arayuzu_guncelle()
 
     def karaborsa_tiklandi(self):
+        """Shop System Integration - Obje/Class modifikasyonu."""
         if self.pencere.oyuncu.sequence == 10:
             esyalar = [
                 "Sleepless İksiri (20 £) - Gecenin gücünü uyandırır.", 
@@ -505,6 +543,7 @@ class OyunEkranı(QWidget):
         self.arayuzu_guncelle()
 
     def sinif_degistir(self, sinif_class, isim, ucret):
+        """Class Mutation (Type-casting) Controller."""
         eski_isim = self.pencere.oyuncu.isim
         eski_para = self.pencere.oyuncu.pound - ucret
         eski_envanter = self.pencere.oyuncu.envanter.copy() 
@@ -520,6 +559,7 @@ class OyunEkranı(QWidget):
         self.arayuzu_guncelle()
 
     def oyunu_kaydet(self):
+        """Current State nesnesini SQLite veritabanına Serileştirme."""
         try:
             conn = sqlite3.connect('lotm_save.db')
             cursor = conn.cursor()
@@ -537,6 +577,10 @@ class OyunEkranı(QWidget):
 
 
 class AnaPencere(QMainWindow):
+    """
+    Main Application Window (Root Controller).
+    Ekranlar arası geçişi (View Routing) ve global servisleri (Audio Engine, Database) yönetir.
+    """
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Lord of the Mysteries - Tingen Sokakları")
@@ -545,7 +589,7 @@ class AnaPencere(QMainWindow):
         self.oyuncu = None 
         veritabani_hazirla()
 
-        # --- MÜZİK VE SFX (SES EFEKTLERİ) MOTORU ---
+        # Audio Engine Initialization (Background Music & Sound Effects)
         self.ses_calar = QMediaPlayer()
         self.ses_cikisi = QAudioOutput()
         self.ses_cikisi.setVolume(0.3) 
@@ -554,9 +598,10 @@ class AnaPencere(QMainWindow):
         muzik_yolu = os.path.join(os.getcwd(), "sesler", "ambiyans.mp3")
         if os.path.exists(muzik_yolu):
             self.ses_calar.setSource(QUrl.fromLocalFile(muzik_yolu))
-            self.ses_calar.setLoops(-1) 
+            self.ses_calar.setLoops(-1) # Infinite Loop
             self.ses_calar.play()
             
+        # SFX Object Pool (Efektlerin bellek yönetimi için hash tablosu)
         self.sfx_havuzu = {}
         sfx_dosyalar = ["kilic.wav", "canavar.wav", "boss.wav", "zafer.wav", "ozel_guc.wav", "esya.wav"]
         for ses in sfx_dosyalar:
@@ -567,6 +612,7 @@ class AnaPencere(QMainWindow):
                 efekt.setVolume(0.8)
             self.sfx_havuzu[ses] = efekt
 
+        # UI/UX Routing Stack (QStackedWidget)
         self.ekran_degistirici = QStackedWidget()
         self.setCentralWidget(self.ekran_degistirici)
 
@@ -576,6 +622,7 @@ class AnaPencere(QMainWindow):
         self.ekran_degistirici.addWidget(self.ana_menu_widget)
         self.ekran_degistirici.addWidget(self.oyun_ekrani_widget)
         
+        # Global Stylesheet (CSS benzeri arayüz şekillendirmesi)
         self.setStyleSheet("""
             QMainWindow { background-color: #0d0d0d; }
             QWidget { background-color: #0d0d0d; }
@@ -588,6 +635,7 @@ class AnaPencere(QMainWindow):
         """)
         
     def sfx_cal(self, dosya_adi):
+        """Asenkron Ses Efekti Tetikleyicisi (Event Emitter)."""
         if dosya_adi in self.sfx_havuzu and self.sfx_havuzu[dosya_adi].source().isValid():
             self.sfx_havuzu[dosya_adi].play()
 

@@ -1,12 +1,19 @@
-# Her canlının ortak özelliklerini tutan Ata Sınıf (Parent Class)
 class Varlik:
+    """
+    Oyun evrenindeki tüm karakter ve düşmanların türetildiği temel sınıf (Base Class).
+    Kalıtım (Inheritance) hiyerarşisinin kökünü oluşturur ve ortak durum (state) yönetimini sağlar.
+    """
     def __init__(self, isim, hp):
         self.isim = isim
         self.hp = hp
 
-    # Ortak bir yetenek: Hasar alma
     def hasar_al(self, miktar):
+        """
+        Varlığın sağlık puanı (HP) durumunu günceller.
+        Hesaplama sonrası sağlık değerinin negatif sınırlara inmesini engelleyerek veri tutarlılığını (Data Consistency) korur.
+        """
         self.hp -= miktar
-        # Can eksiye düşmesin diye sıfıra sabitliyoruz
+        
+        # Sınır kontrolü (Clamping)
         if self.hp < 0:
             self.hp = 0
